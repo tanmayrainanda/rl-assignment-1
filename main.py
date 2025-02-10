@@ -17,3 +17,14 @@ class BanditArm:
         self.n_pulls += 1
         self.total_reward += reward
         self.values.append(reward)
+
+class ContextualBandit:
+    def __init__(self, n_arms=4, n_contexts=3):
+        self.n_arms = n_arms
+        self.n_contexts = n_contexts
+        self.arms = {i: {j: BanditArm() for j in range(n_arms)} for i in range(n_contexts)}
+        
+    def get_arm_value(self, context, arm):
+        if self.arms[context][arm].n_pulls == 0:
+            return 0
+        return self.arms[context][arm].total_reward / self.arms[context][arm].n_pulls
