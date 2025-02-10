@@ -324,6 +324,53 @@ class NewsRecommender:
             }
         
         return pd.DataFrame(summary)
+    def generate_report(self):
+        """
+        Generate performance report for all models across different contexts.
+        Returns two DataFrames: one for rewards and one for convergence metrics.
+        """
+        # Get evaluation results
+        eval_results = self.evaluate_models()
+        
+        # Create rewards DataFrame
+        rewards_data = {
+            'Context': [],
+            'Epsilon-Greedy': [],
+            'UCB': [],
+            'SoftMax': []
+        }
+        
+        for context in range(3):
+            rewards_data['Context'].append(f'Context {context}')
+            rewards_data['Epsilon-Greedy'].append(eval_results['epsilon_greedy'][f'context_{context}'])
+            rewards_data['UCB'].append(eval_results['ucb'][f'context_{context}'])
+            rewards_data['SoftMax'].append(eval_results['softmax'][f'context_{context}'])
+        
+        rewards_df = pd.DataFrame(rewards_data)
+        
+        # Create convergence DataFrame
+        convergence_data = {
+            'Context': [],
+            'Epsilon-Greedy': [],
+            'UCB': [],
+            'SoftMax': []
+        }
+        
+        for context in range(3):
+            convergence_data['Context'].append(f'Context {context}')
+            convergence_data['Epsilon-Greedy'].append(
+                eval_results['epsilon_greedy'][f'convergence_time_context_{context}']
+            )
+            convergence_data['UCB'].append(
+                eval_results['ucb'][f'convergence_time_context_{context}']
+            )
+            convergence_data['SoftMax'].append(
+                eval_results['softmax'][f'convergence_time_context_{context}']
+            )
+        
+        convergence_df = pd.DataFrame(convergence_data)
+        
+        return rewards_df, convergence_df
 
 def main():
     recommender = NewsRecommender(roll_number=87)
