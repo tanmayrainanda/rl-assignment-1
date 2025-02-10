@@ -117,7 +117,6 @@ class NewsRecommender:
     
     def classify_user(self, user_features):
         user_class = self.user_classifier.predict([user_features])[0]
-        # Map user class to context number
         context_map = {'User1': 0, 'User2': 1, 'User3': 2}
         return context_map[user_class]
     
