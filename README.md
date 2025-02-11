@@ -74,7 +74,6 @@ The system successfully mapped between recommended categories and actual dataset
 
 - Case-sensitive matching was implemented
 - Wide variety of categories available (41 unique categories)
-- Main categories included: U.S. NEWS, COMEDY, TECH, ENTERTAINMENT, etc.
 
 ## Recommendations for Improvement
 
