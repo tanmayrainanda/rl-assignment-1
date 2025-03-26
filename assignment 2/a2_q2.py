@@ -270,7 +270,7 @@ class MonteCarloApproximation:
         self.alpha = 0.1  # Learning rate
         self.gamma = env.gamma  # Discount factor
     
-    def run(self, num_iterations=1000):
+    def run(self, num_iterations=10000):
         """
         Run a faster Monte Carlo approximation algorithm
         
