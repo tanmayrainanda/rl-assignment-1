@@ -270,7 +270,7 @@ class MonteCarloApproximation:
         self.alpha = 0.1  # Learning rate
         self.gamma = env.gamma  # Discount factor
     
-    def run(self, num_iterations=10000):
+    def run(self, num_iterations=1000):
         """
         Run a faster Monte Carlo approximation algorithm
         
@@ -279,6 +279,10 @@ class MonteCarloApproximation:
         """
         valid_states = [s for s in self.env.get_all_valid_states() 
                        if s not in self.env.terminal_states]
+        
+        # Track value evolution at specific checkpoints
+        checkpoint_iterations = []
+        checkpoint_values = []
         
         print(f"Running Monte Carlo approximation for {num_iterations} iterations...")
         
@@ -305,9 +309,19 @@ class MonteCarloApproximation:
                 target = reward + self.gamma * future_value
                 self.Q[(state, action)] += self.alpha * (target - self.Q[(state, action)])
             
-            # Periodically update the policy
+            # Periodically update the policy and save checkpoints
             if i % 100 == 0 or i == num_iterations - 1:
                 self._update_policy()
+                
+                # Calculate current values for all states
+                current_values = {state: self.Q[(state, self.policy[state])] 
+                                 for state in self.env.get_all_valid_states() 
+                                 if state not in self.env.terminal_states}
+                
+                # Store checkpoint
+                checkpoint_iterations.append(i)
+                checkpoint_values.append(current_values.copy())
+                
                 print(f"Monte Carlo iteration {i}/{num_iterations}")
         
         # Final policy update
@@ -320,7 +334,7 @@ class MonteCarloApproximation:
             else:
                 self.values[state] = self.Q[(state, self.policy[state])]
         
-        return self.values, self.policy
+        return self.values, self.policy, (checkpoint_iterations, checkpoint_values)
     
     def _update_policy(self):
         """Update policy to be greedy with respect to current Q-values"""
@@ -424,6 +438,145 @@ def visualize_policy(env, policy, title="Optimal Policy"):
     return fig, ax
 
 
+def visualize_state_values(env, vi_values, pi_values, mc_values, title="State Value Comparison"):
+    """Visualize the state values from different algorithms as heatmaps"""
+    fig, axs = plt.subplots(1, 3, figsize=(18, 6))
+    
+    # Create 2D arrays for heatmaps
+    vi_array = np.zeros((env.grid_size, env.grid_size))
+    pi_array = np.zeros((env.grid_size, env.grid_size))
+    mc_array = np.zeros((env.grid_size, env.grid_size))
+    
+    # Fill with NaN for walls
+    for i in range(env.grid_size):
+        for j in range(env.grid_size):
+            if (i, j) in env.walls:
+                vi_array[i, j] = np.nan
+                pi_array[i, j] = np.nan
+                mc_array[i, j] = np.nan
+            else:
+                vi_array[i, j] = vi_values.get((i, j), 0)
+                pi_array[i, j] = pi_values.get((i, j), 0)
+                mc_array[i, j] = mc_values.get((i, j), 0)
+    
+    # Create a common colormap range
+    vmin = min(np.nanmin(vi_array), np.nanmin(pi_array), np.nanmin(mc_array))
+    vmax = max(np.nanmax(vi_array), np.nanmax(pi_array), np.nanmax(mc_array))
+    
+    # Plot Value Iteration values
+    im1 = axs[0].imshow(vi_array, cmap='viridis', vmin=vmin, vmax=vmax)
+    axs[0].set_title('Value Iteration')
+    
+    # Plot Policy Iteration values
+    im2 = axs[1].imshow(pi_array, cmap='viridis', vmin=vmin, vmax=vmax)
+    axs[1].set_title('Policy Iteration')
+    
+    # Plot Monte Carlo values
+    im3 = axs[2].imshow(mc_array, cmap='viridis', vmin=vmin, vmax=vmax)
+    axs[2].set_title('Monte Carlo Approximation')
+    
+    # Add colorbars
+    fig.colorbar(im1, ax=axs[0], label='State Value')
+    fig.colorbar(im2, ax=axs[1], label='State Value')
+    fig.colorbar(im3, ax=axs[2], label='State Value')
+    
+    # Add grid
+    for ax in axs:
+        for i in range(env.grid_size):
+            ax.axhline(i - 0.5, color='white', linewidth=0.5)
+            ax.axvline(i - 0.5, color='white', linewidth=0.5)
+        
+        # Mark special locations
+        # Goal
+        ax.plot(env.goal[1], env.goal[0], 'w*', markersize=10)
+        # Start
+        ax.plot(env.start[1], env.start[0], 'wo', markersize=8)
+        # Portals
+        ax.plot(env.portal_in[1], env.portal_in[0], 'ws', markersize=8)
+        ax.plot(env.portal_out[1], env.portal_out[0], 'ws', markersize=8)
+    
+    plt.tight_layout()
+    plt.savefig("state_values_comparison.png", dpi=300, bbox_inches='tight')
+    
+    return fig
+
+
+def visualize_convergence(vi_history, pi_history, title="Algorithm Convergence"):
+    """Visualize the convergence of Value Iteration and Policy Iteration algorithms"""
+    fig, axs = plt.subplots(2, 1, figsize=(12, 10))
+    
+    # For Value Iteration, plot the maximum absolute difference in values between iterations
+    vi_diffs = []
+    for i in range(1, len(vi_history)):
+        max_diff = 0
+        for state in vi_history[i]:
+            diff = abs(vi_history[i][state] - vi_history[i-1][state])
+            max_diff = max(max_diff, diff)
+        vi_diffs.append(max_diff)
+    
+    # For Policy Iteration, count how many policy changes occur in each iteration
+    pi_changes = []
+    for i in range(1, len(pi_history)):
+        changes = 0
+        for state in pi_history[i]:
+            if pi_history[i][state] != pi_history[i-1][state]:
+                changes += 1
+        pi_changes.append(changes)
+    
+    # Plot Value Iteration convergence
+    axs[0].plot(range(1, len(vi_history)), vi_diffs, marker='.', label='Value Iteration')
+    axs[0].set_xlabel('Iteration')
+    axs[0].set_ylabel('Max Value Change')
+    axs[0].set_title('Value Change per Iteration')
+    axs[0].set_yscale('log')
+    axs[0].grid(True)
+    axs[0].legend()
+    
+    # Plot Policy Iteration policy changes
+    axs[1].plot(range(1, len(pi_history)), pi_changes, marker='.')
+    axs[1].set_xlabel('Iteration')
+    axs[1].set_ylabel('Number of Policy Changes')
+    axs[1].set_title('Policy Changes per Iteration (Policy Iteration)')
+    axs[1].grid(True)
+    
+    plt.tight_layout()
+    plt.savefig("convergence_comparison.png", dpi=300, bbox_inches='tight')
+    
+    return fig
+
+
+def visualize_monte_carlo_convergence(env, checkpoint_iterations, checkpoint_values, title="Monte Carlo Convergence"):
+    """Visualize how the Monte Carlo values evolve over time"""
+    plt.figure(figsize=(10, 6))
+    
+    # Choose representative states to track
+    key_states = [
+        env.start,  # Start state
+        (4, 4),     # Middle of the grid
+        (1, 7),     # Near the goal
+        (0, 7)      # One step from goal
+    ]
+    
+    # Track values of these states over iterations
+    for state in key_states:
+        if state in env.walls:
+            continue
+            
+        values_over_time = [values.get(state, 0) for values in checkpoint_values]
+        plt.plot(checkpoint_iterations, values_over_time, 
+                 marker='o', label=f"State {state}")
+    
+    plt.xlabel('Iteration')
+    plt.ylabel('State Value')
+    plt.title('Monte Carlo Value Convergence for Selected States')
+    plt.grid(True)
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig("monte_carlo_convergence.png", dpi=300, bbox_inches='tight')
+    
+    return plt.gcf()
+
+
 def main():
     # Create the environment
     env = GridWorld()
@@ -441,7 +594,8 @@ def main():
     # Monte Carlo Approximation
     print("Running Monte Carlo Approximation...")
     mc = MonteCarloApproximation(env)
-    mc_values, mc_policy = mc.run(num_iterations=1000)
+    mc_values, mc_policy, mc_checkpoint_data = mc.run(num_iterations=1000)
+    mc_iterations, mc_values_checkpoints = mc_checkpoint_data
     
     # Visualize policies
     print("Visualizing policies...")
@@ -468,7 +622,20 @@ def main():
     print(f"Value Iteration vs Monte Carlo: {policy_diff_vi_mc} differences")
     print(f"Policy Iteration vs Monte Carlo: {policy_diff_pi_mc} differences")
     
+    # Visualize convergence for Value and Policy Iteration
+    print("Visualizing convergence for Value and Policy Iteration...")
+    convergence_fig = visualize_convergence(vi_history, pi_history)
+    
+    # Visualize Monte Carlo convergence separately
+    print("Visualizing Monte Carlo convergence...")
+    mc_convergence_fig = visualize_monte_carlo_convergence(env, mc_iterations, mc_values_checkpoints)
+    
+    # Visualize state values for all algorithms
+    print("Visualizing state values for all algorithms...")
+    values_fig = visualize_state_values(env, vi_values, pi_values, mc_values)
+    
     plt.show()
+
 
 if __name__ == "__main__":
     main()
