@@ -2,7 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import networkx as nx
 
-class PlakshaUniversityMDP:
+class PlakshaMDP:
     def __init__(self):
         # Define states: (Location, Hunger status)
         # 0: (Hostel, Not Hungry)
@@ -274,7 +274,7 @@ class PlakshaUniversityMDP:
 
 def main():
     # Create the MDP
-    mdp = PlakshaUniversityMDP()
+    mdp = PlakshaMDP()
     
     # Print MDP in tabular form
     print("Finite MDP for Plaksha University Student:")
