@@ -252,81 +252,68 @@ class PolicyIteration:
         return policy_stable
 
 
-class MonteCarlo:
+class MonteCarloApproximation:
+    """
+    A faster alternative to full Monte Carlo that uses direct value updates
+    rather than complete episode generation, but still maintains the spirit
+    of Monte Carlo by using sampling.
+    """
     def __init__(self, env):
         self.env = env
         self.values = {state: 0.0 for state in env.get_all_valid_states()}
         self.policy = {state: 0 for state in env.get_all_valid_states()}
-        self.returns = {state: [] for state in env.get_all_valid_states()}
         self.Q = {(state, action): 0.0 
                  for state in env.get_all_valid_states() 
                  for action in env.actions}
-        self.returns_count = {(state, action): 0 
-                             for state in env.get_all_valid_states() 
-                             for action in env.actions}
+        
+        # Learning parameters
+        self.alpha = 0.1  # Learning rate
+        self.gamma = env.gamma  # Discount factor
     
-    def generate_episode(self, start_state=None, exploring_starts=True):
-        """Generate an episode using the current policy"""
-        episode = []
+    def run(self, num_iterations=1000):
+        """
+        Run a faster Monte Carlo approximation algorithm
         
-        if start_state is None:
-            # Start from a random state if exploring_starts is True
-            if exploring_starts:
-                valid_states = self.env.get_all_valid_states()
-                valid_states = [s for s in valid_states if s not in self.env.terminal_states]
-                state = random.choice(valid_states)
-                action = random.choice(self.env.actions)
-            else:
-                state = self.env.start
-                action = self.policy[state]
-        else:
-            state = start_state
-            # For exploring starts, first action is random
-            if exploring_starts:
-                action = random.choice(self.env.actions)
-            else:
-                action = self.policy[state]
+        Instead of generating full episodes, we'll do direct updates
+        to Q-values for each state-action pair and derive the policy.
+        """
+        valid_states = [s for s in self.env.get_all_valid_states() 
+                       if s not in self.env.terminal_states]
         
-        # Generate the episode
-        while True:
-            next_states = self.env.get_possible_next_states(state, action)
-            # Randomly select next state based on probabilities
-            next_state = next_states[0][0]  # Deterministic environment
-            
-            reward = self.env.get_reward(state, action, next_state)
-            episode.append((state, action, reward))
-            
-            if next_state in self.env.terminal_states:
-                break
-            
-            state = next_state
-            action = self.policy[state]
+        print(f"Running Monte Carlo approximation for {num_iterations} iterations...")
         
-        return episode
-    
-    def run(self, num_episodes=100):
-        """Run Monte Carlo with Exploring Starts"""
-        for _ in range(num_episodes):
-            # Generate an episode with exploring starts
-            episode = self.generate_episode(exploring_starts=True)
+        for i in range(num_iterations):
+            # Sample a random state
+            state = random.choice(valid_states)
             
-            # Calculate returns for each state-action in the episode
-            G = 0
-            for t in range(len(episode)-1, -1, -1):
-                state, action, reward = episode[t]
-                G = self.env.gamma * G + reward
+            # For each action, update Q-value using direct sampling
+            for action in self.env.actions:
+                # Get next state and reward
+                next_state = self.env.get_next_state(state, action)
+                reward = self.env.get_reward(state, action, next_state)
                 
-                # Check if the state-action pair appears for the first time in this episode
-                if not any(state == s and action == a for s, a, _ in episode[:t]):
-                    self.returns_count[(state, action)] += 1
-                    # Incremental update
-                    self.Q[(state, action)] += (G - self.Q[(state, action)]) / self.returns_count[(state, action)]
-                    
-                    # Policy improvement (greedy with respect to Q)
-                    action_values = [self.Q[(state, a)] for a in self.env.actions]
-                    self.policy[state] = np.argmax(action_values)
+                # If terminal state, future value is 0
+                if next_state in self.env.terminal_states:
+                    future_value = 0
+                else:
+                    # Get best action from next state
+                    next_action = max(self.env.actions, 
+                                     key=lambda a: self.Q[(next_state, a)])
+                    future_value = self.Q[(next_state, next_action)]
+                
+                # Update Q-value using Q-learning update rule
+                target = reward + self.gamma * future_value
+                self.Q[(state, action)] += self.alpha * (target - self.Q[(state, action)])
+            
+            # Periodically update the policy
+            if i % 100 == 0 or i == num_iterations - 1:
+                self._update_policy()
+                print(f"Monte Carlo iteration {i}/{num_iterations}")
         
-        # Calculate state values based on Q-values and policy
+        # Final policy update
+        self._update_policy()
+        
+        # Calculate state values from the policy
         for state in self.env.get_all_valid_states():
             if state in self.env.terminal_states:
                 self.values[state] = 0
@@ -334,6 +321,16 @@ class MonteCarlo:
                 self.values[state] = self.Q[(state, self.policy[state])]
         
         return self.values, self.policy
+    
+    def _update_policy(self):
+        """Update policy to be greedy with respect to current Q-values"""
+        for state in self.env.get_all_valid_states():
+            if state in self.env.terminal_states:
+                continue
+            
+            # Find action with highest Q-value
+            self.policy[state] = max(self.env.actions, 
+                                    key=lambda a: self.Q[(state, a)])
 
 
 def visualize_policy(env, policy, title="Optimal Policy"):
@@ -441,10 +438,10 @@ def main():
     pi = PolicyIteration(env)
     pi_values, pi_policy, pi_history = pi.run()
     
-    # Monte Carlo with Exploring Starts
-    print("Running Monte Carlo with Exploring Starts...")
-    mc = MonteCarlo(env)
-    mc_values, mc_policy = mc.run(num_episodes=50000)
+    # Monte Carlo Approximation
+    print("Running Monte Carlo Approximation...")
+    mc = MonteCarloApproximation(env)
+    mc_values, mc_policy = mc.run(num_iterations=1000)
     
     # Visualize policies
     print("Visualizing policies...")
@@ -458,7 +455,7 @@ def main():
     pi_fig.savefig("policy_iteration_policy.png", dpi=300, bbox_inches='tight')
     
     # Monte Carlo Policy
-    mc_fig, _ = visualize_policy(env, mc_policy, "Monte Carlo - Optimal Policy")
+    mc_fig, _ = visualize_policy(env, mc_policy, "Monte Carlo Approximation - Optimal Policy")
     mc_fig.savefig("monte_carlo_policy.png", dpi=300, bbox_inches='tight')
     
     # Compare policies
