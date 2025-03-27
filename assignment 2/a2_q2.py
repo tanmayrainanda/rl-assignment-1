@@ -749,7 +749,7 @@ def main():
     # Monte Carlo Approximation
     print("Running Monte Carlo Approximation...")
     mc = MonteCarloApproximation(env)
-    mc_values, mc_policy, mc_checkpoint_data = mc.run(num_iterations=1000)
+    mc_values, mc_policy, mc_checkpoint_data = mc.run(num_iterations=500000)
     mc_iterations, mc_values_checkpoints = mc_checkpoint_data
     
     # Visualize policies
