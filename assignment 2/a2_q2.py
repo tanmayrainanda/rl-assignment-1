@@ -20,15 +20,15 @@ class GridWorld:
         self.walls = [
             # Vertical walls
             (0, 5), (1, 5), (2, 5), (3, 5),  # Vertical wall at column 5
-            (6, 3), (7, 3), (8, 3),  # Vertical wall at column 3
+            (5, 3), (6, 3), (7, 3),  # Vertical wall at column 3
             
             # Horizontal walls
             (3, 5), (3, 6), (3, 7), (3, 8),  # Horizontal wall at row 3
-            (6, 1), (6, 2), (6, 3)   # Horizontal wall at row 6
+            (5, 1), (5, 2), (5, 3)   # Horizontal wall at row 6
         ]
         
         # Define portals
-        self.portal_in = (7, 2)    # IN portal
+        self.portal_in = (6, 2)    # IN portal
         self.portal_out = (2, 6)   # OUT portal
         
         # Define start and goal
@@ -501,6 +501,161 @@ def visualize_state_values(env, vi_values, pi_values, mc_values, title="State Va
     return fig
 
 
+def visualize_all_convergence(env, vi_history, pi_history, mc_iterations, mc_values_history):
+    """
+    Create comprehensive convergence visualizations for all three methods
+    
+    Args:
+        env: The GridWorld environment
+        vi_history: List of value function dictionaries for each VI iteration
+        pi_history: List of policy dictionaries for each PI iteration
+        mc_iterations: List of iteration numbers when MC values were recorded
+        mc_values_history: List of value function dictionaries at MC checkpoints
+    """
+    # Create figure with 2x2 subplots
+    fig, axs = plt.subplots(2, 2, figsize=(15, 12))
+    
+    # 1. Value Function Error/Change Plot (all methods)
+    # Calculate maximum value change per iteration for each method
+    
+    # Value Iteration
+    vi_diffs = []
+    for i in range(1, len(vi_history)):
+        max_diff = 0
+        for state in vi_history[i]:
+            diff = abs(vi_history[i][state] - vi_history[i-1][state])
+            max_diff = max(max_diff, diff)
+        vi_diffs.append(max_diff)
+    
+    # Policy Iteration - need to reconstruct value function history
+    pi_values_history = []
+    pi_diffs = []
+    
+    # Monte Carlo - calculate average change in values at checkpoints
+    mc_diffs = []
+    for i in range(1, len(mc_values_history)):
+        avg_diff = 0
+        count = 0
+        for state in mc_values_history[i]:
+            if state in mc_values_history[i-1]:
+                diff = abs(mc_values_history[i][state] - mc_values_history[i-1][state])
+                avg_diff += diff
+                count += 1
+        if count > 0:
+            mc_diffs.append(avg_diff / count)
+        else:
+            mc_diffs.append(0)
+    
+    # Plot convergence of value functions (max delta)
+    axs[0, 0].plot(range(1, len(vi_history)), vi_diffs, marker='.', label='Value Iteration')
+    if len(mc_diffs) > 0:
+        # Plot MC at the correct iteration numbers (not all iterations were saved)
+        axs[0, 0].plot(mc_iterations[1:], mc_diffs, marker='o', label='Monte Carlo')
+    axs[0, 0].set_xlabel('Iteration')
+    axs[0, 0].set_ylabel('Value Function Change')
+    axs[0, 0].set_title('Value Function Convergence')
+    axs[0, 0].set_yscale('log')
+    axs[0, 0].grid(True)
+    axs[0, 0].legend()
+    
+    # 2. Policy Changes Plot
+    pi_changes = []
+    for i in range(1, len(pi_history)):
+        changes = 0
+        total = 0
+        for state in pi_history[i]:
+            if state not in env.walls and state not in env.terminal_states:
+                total += 1
+                if pi_history[i][state] != pi_history[i-1][state]:
+                    changes += 1
+        pi_changes.append(changes / max(1, total))  # As percentage of non-wall states
+    
+    axs[0, 1].plot(range(1, len(pi_history)), pi_changes, marker='.')
+    axs[0, 1].set_xlabel('Iteration')
+    axs[0, 1].set_ylabel('Policy Change Ratio')
+    axs[0, 1].set_title('Policy Changes During Policy Iteration')
+    axs[0, 1].grid(True)
+    
+    # 3. State Value Convergence for Key States (all methods)
+    # Choose key states to track
+    key_states = [
+        env.start,       # Starting state
+        (4, 4),          # Middle of grid
+        (1, 7),          # Near goal
+        (0, 7)           # One step from goal
+    ]
+    
+    # Filter out any walls in key states
+    key_states = [s for s in key_states if s not in env.walls]
+    
+    # For each key state, plot value over iterations for all methods
+    for state in key_states:
+        # Get value history for this state
+        vi_values = [history.get(state, 0) for history in vi_history]
+        
+        # For Monte Carlo, we need to extract from the checkpoints
+        mc_values = [history.get(state, 0) for history in mc_values_history]
+        
+        # Plot for this state
+        axs[1, 0].plot(range(len(vi_history)), vi_values, 
+                     label=f"VI State {state}")
+        
+        # Only plot MC if we have values
+        if len(mc_values) > 0:
+            axs[1, 0].plot(mc_iterations, mc_values, 
+                         linestyle='--', marker='o',
+                         label=f"MC State {state}")
+    
+    axs[1, 0].set_xlabel('Iteration')
+    axs[1, 0].set_ylabel('State Value')
+    axs[1, 0].set_title('Value Convergence for Key States')
+    axs[1, 0].grid(True)
+    axs[1, 0].legend()
+    
+    # 4. Bellman Error Plot (Value Iteration)
+    vi_bellman_errors = []
+    for i in range(len(vi_history)):
+        values = vi_history[i]
+        total_error = 0
+        count = 0
+        
+        for state in values:
+            if state in env.terminal_states or state in env.walls:
+                continue
+                
+            # Calculate Bellman error
+            max_action_value = float('-inf')
+            for action in env.actions:
+                action_value = 0
+                for next_state, prob in env.get_possible_next_states(state, action):
+                    reward = env.get_reward(state, action, next_state)
+                    action_value += prob * (reward + env.gamma * values.get(next_state, 0))
+                max_action_value = max(max_action_value, action_value)
+            
+            # Bellman error is the difference between value and the max action value
+            error = abs(values[state] - max_action_value)
+            total_error += error
+            count += 1
+        
+        # Average error across all states
+        if count > 0:
+            vi_bellman_errors.append(total_error / count)
+        else:
+            vi_bellman_errors.append(0)
+    
+    axs[1, 1].plot(range(len(vi_history)), vi_bellman_errors, marker='.')
+    axs[1, 1].set_xlabel('Iteration')
+    axs[1, 1].set_ylabel('Average Bellman Error')
+    axs[1, 1].set_title('Bellman Error During Value Iteration')
+    axs[1, 1].set_yscale('log')
+    axs[1, 1].grid(True)
+    
+    plt.tight_layout()
+    plt.savefig("all_convergence_analysis.png", dpi=300, bbox_inches='tight')
+    
+    return fig
+
+
 def visualize_convergence(vi_history, pi_history, title="Algorithm Convergence"):
     """Visualize the convergence of Value Iteration and Policy Iteration algorithms"""
     fig, axs = plt.subplots(2, 1, figsize=(12, 10))
@@ -633,6 +788,10 @@ def main():
     # Visualize state values for all algorithms
     print("Visualizing state values for all algorithms...")
     values_fig = visualize_state_values(env, vi_values, pi_values, mc_values)
+    
+    # Create comprehensive convergence visualization for all methods
+    print("Creating comprehensive convergence analysis...")
+    all_convergence_fig = visualize_all_convergence(env, vi_history, pi_history, mc_iterations, mc_values_checkpoints)
     
     plt.show()
 
