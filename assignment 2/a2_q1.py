@@ -82,19 +82,23 @@ class PlakshaMDP:
                         print(f"    To State: {self.state_names[s_prime]} with probability {self.P[a, s, s_prime]:.2f}")
     
     def draw_mdp_diagram(self):
-        """Draw the MDP diagram with probabilities and rewards"""
+        """Draw the MDP diagram with probabilities and rewards - without self-arrows"""
         G = nx.DiGraph()
         
         # Add nodes
         for i, state_name in enumerate(self.state_names):
             G.add_node(state_name, reward=self.rewards[i])
         
-        # Add edges for each action
+        # Add edges for each action, excluding self-loops
         for action in range(self.n_actions):
             action_name = self.action_names[action]
             for source in range(self.n_states):
                 source_name = self.state_names[source]
                 for target in range(self.n_states):
+                    # Skip self-loops (source == target)
+                    if source == target:
+                        continue
+                    
                     target_name = self.state_names[target]
                     probability = self.P[action, source, target]
                     if probability > 0:
@@ -120,8 +124,23 @@ class PlakshaMDP:
         
         nx.draw_networkx_edges(G, pos, edgelist=edges, edge_color=edge_colors, width=1.5)
         
-        # Node labels
-        node_labels = {node: f"{node}\nR={G.nodes[node]['reward']}" for node in G.nodes()}
+        # Node labels with self-loop information
+        node_labels = {}
+        for i, node in enumerate(G.nodes()):
+            # Check for self loops in original data and add to label if present
+            self_loops = []
+            for a in range(self.n_actions):
+                p = self.P[a, i, i]
+                if p > 0:
+                    self_loops.append(f"{self.action_names[a]}: P={p:.1f}")
+            
+            # Create label with reward and self-loop info
+            label = f"{node}\nR={self.rewards[i]}"
+            if self_loops:
+                label += "\nSelf: " + ", ".join(self_loops)
+            
+            node_labels[node] = label
+            
         nx.draw_networkx_labels(G, pos, labels=node_labels, font_size=8)
         
         # Edge labels
@@ -130,7 +149,7 @@ class PlakshaMDP:
             edge_labels[(u, v)] = f"{data['action']}\nP={data['probability']:.1f}"
         nx.draw_networkx_edge_labels(G, pos, edge_labels=edge_labels, font_size=7)
         
-        plt.title("Plaksha University Student MDP")
+        plt.title("Plaksha University Student MDP (Self-Arrows Removed)")
         plt.axis('off')
         plt.tight_layout()
         plt.savefig('mdp_diagram.png', dpi=300)
